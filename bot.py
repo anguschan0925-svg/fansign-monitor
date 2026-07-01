@@ -15,26 +15,36 @@ def load_keywords():
     return []
 
 def fetch_rss_with_fallback():
-    # 多個穩定的 X/Twitter RSS 鏡像站備用清單，依序嘗試，大幅提升穩定度
-    urls = [
-        "https://xcancel.com/fansign_info/rss",
-        "https://nitter.poast.org/fansign_info/rss",
-        "https://nitter.privacydev.net/fansign_info/rss"
+    # 擴大戰線：整合全球精選 Nitter 鏡像站 + 高穩定度社群 RSSHub 實例，共計 11 個防禦節點
+    endpoints = [
+        {"url": "https://rsshub.rssforever.com/twitter/user/fansign_info", "name": "RSSHub (RssForever 實例)"},
+        {"url": "https://rsshub.moeyy.xyz/twitter/user/fansign_info", "name": "RSSHub (Moeyy 實例)"},
+        {"url": "https://twitt.re/fansign_info/rss", "name": "Nitter (twitt.re)"},
+        {"url": "https://nitter.pussthecat.org/fansign_info/rss", "name": "Nitter (pussthecat)"},
+        {"url": "https://nitter.fdn.fr/fansign_info/rss", "name": "Nitter (fdn.fr)"},
+        {"url": "https://nitter.unixfox.eu/fansign_info/rss", "name": "Nitter (unixfox)"},
+        {"url": "https://nitter.kavin.rocks/fansign_info/rss", "name": "Nitter (kavin.rocks)"},
+        {"url": "https://nitter.moomoo.me/fansign_info/rss", "name": "Nitter (moomoo.me)"},
+        {"url": "https://nitter.catsarch.com/fansign_info/rss", "name": "Nitter (catsarch)"},
+        {"url": "https://xcancel.com/fansign_info/rss", "name": "Xcancel 鏡像"},
+        {"url": "https://rsshub.app/twitter/user/fansign_info", "name": "RSSHub (官方示範站)"}
     ]
     
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    }
     
-    for url in urls:
-        print(f"【步驟 2】正在嘗試連線至來源站: {url}")
+    for ep in endpoints:
+        print(f"【步驟 2】正在嘗試連線至來源: {ep['name']}")
         try:
-            response = requests.get(url, headers=headers, timeout=15)
+            response = requests.get(ep['url'], headers=headers, timeout=12)
             print(f" -> 伺服器回應狀態碼: {response.status_code}")
             if response.status_code == 200 and response.content:
-                # 確保返回的是 XML 格式，而不是網頁錯誤
-                if b"<rss" in response.content or b"<feed" in response.content:
-                    print(f" -> [成功] 已成功從該站獲取資料！")
+                # 相容 Nitter 和 RSSHub 的 XML 特徵檢測
+                if b"<rss" in response.content or b"<feed" in response.content or b"<channel" in response.content:
+                    print(f" -> 🎉 [成功] 已成功從 {ep['name']} 獲取有效的 XML 資料！")
                     return response.content
-                print(" -> [提示] 該站返回了無效的格式，自動切換至下一站...")
+                print(" -> [提示] 返回內容非有效的 RSS 格式，自動切換至下一站...")
         except Exception as e:
             print(f" -> [連線失敗] 錯誤原因: {e}，自動切換至下一站...")
     return None
@@ -44,13 +54,13 @@ def check_tweets():
     rss_content = fetch_rss_with_fallback()
     
     if not rss_content:
-        print("【⚠️ 警告】所有備用來源暫時無法連線（可能遭 X 暫時封鎖網頁），本次執行安全結束。")
+        print("【⚠️ 嚴重警告】全線崩潰！今天所有 Nitter 和 RSSHub 備用節點皆無法突破 X 的封鎖或 GitHub IP 的限制。請稍後再試。")
         return
 
     try:
         root = ET.fromstring(rss_content)
         items = root.findall('.//item')
-        print(f"【步驟 3】成功抓取到 {len(items)} 條最新推文，開始比對...")
+        print(f"【步驟 3】成功抓取到 {len(items)} 條最新推文，開始進行比對...")
         
         match_count = 0
         for item in items:
@@ -58,11 +68,17 @@ def check_tweets():
             description = item.find('description').text if item.find('description') is not None else ""
             link = item.find('link').text if item.find('link') is not None else ""
             
-            # 將網址還原為標準的 x.com 方便手機直接點開
-            link = link.replace("xcancel.com", "x.com").replace("nitter.poast.org", "x.com").replace("nitter.privacydev.net", "x.com")
+            # 統一將各式各樣的鏡像站/舊網址，還原為標準的 x.com 方便手機與電腦直接點開
+            domains_to_replace = [
+                "xcancel.com", "nitter.poast.org", "nitter.privacydev.net", "twitt.re", 
+                "nitter.pussthecat.org", "nitter.fdn.fr", "nitter.unixfox.eu", 
+                "nitter.kavin.rocks", "nitter.moomoo.me", "nitter.catsarch.com", "twitter.com"
+            ]
+            for domain in domains_to_replace:
+                link = link.replace(domain, "x.com")
+                
             content_lower = (title + " " + description).lower()
             
-            # 比對邏輯：如果關鍵字清單為空，就代表全發（如同您的 IFTTT 設定）；若有關鍵字則進行過濾
             is_match = False
             if not keywords:
                 is_match = True
@@ -101,7 +117,7 @@ def send_telegram_message(msg):
     payload = {"chat_id": CHAT_ID, "text": msg}
     try:
         res = requests.post(url, json=payload, timeout=10)
-        print(f"【Telegram 發送反饋】狀態碼: {res.status_code}, 回應內容: {res.text}")
+        print(f"【Telegram 發送反饋】狀態碼: {res.status_code}")
     except Exception as e:
         print(f"【錯誤】發送 Telegram 訊息時發生網路異常: {e}")
 
