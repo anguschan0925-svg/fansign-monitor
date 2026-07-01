@@ -3,11 +3,13 @@ name: Fansign Monitor Bot
 on:
   schedule:
     - cron: '*/30 * * * *' # 每 30 分鐘自動執行一次
-  workflow_dispatch: # 允許你手動點擊執行
+  workflow_dispatch: # 允許手動點擊執行
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # 【核心修正 1】明確授權機器人可以寫入並推送檔案，解決 403 錯誤
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,6 +26,7 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          PYTHONUNBUFFERED: "1" # 【核心修正 2】強制 Python 即時輸出日誌，絕不快取
         run: python bot.py
 
       - name: Commit history
